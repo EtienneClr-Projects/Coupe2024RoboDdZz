@@ -457,22 +457,7 @@ while True:
             ic("goto", pos_waiting, theta*180/pi)
             waiting_for_release = False
 
-
-            start = Point2(robot.pos[0],robot.pos[1])
-            goal = Point2(pos_waiting[0],pos_waiting[1])
-            graph, dico_all_points = avoidance.create_graph(start, goal, expanded_obstacle_poly)
-
-            path = avoidance.find_avoidance_path(graph, 0, 1).nodes # mais en soit renvoie aussi le coût
-
-            goals=[]
-            for p in path[1:]: # we don't add the start point
-                goals.append([float(dico_all_points[p][0]),float(dico_all_points[p][1]), theta])
-            goals_positions = goals
-            ic(goals_positions)
-            print()
-            print()
-            print()
-
+            goals_positions.append([pos_waiting[0],pos_waiting[1],theta])
 
         # si clic droit, on supprime tous les goals
         if event.type == pygame.MOUSEBUTTONUP:
@@ -481,6 +466,25 @@ while True:
 
     button.listen(events)
     pw.update(events)
+
+
+    # recompute path
+    if len(goals_positions) > 0:
+        theta = 0 # test only DEBUG TODO
+
+        start = Point2(robot.pos[0],robot.pos[1])
+        goal = Point2(goals_positions[-1][0],goals_positions[-1][1])
+        graph, dico_all_points = avoidance.create_graph(start, goal, expanded_obstacle_poly)
+
+        path = avoidance.find_avoidance_path(graph, 0, 1).nodes # mais en soit renvoie aussi le coût
+
+        goals=[]
+        for p in path[1:]: # we don't add the start point
+            goals.append([float(dico_all_points[p][0]),float(dico_all_points[p][1]), theta])
+        goals_positions = goals
+        # ic(goals_positions)
+
+
 
     ic(goals_positions, robot.pos)
     robot.check_goal_reached()
