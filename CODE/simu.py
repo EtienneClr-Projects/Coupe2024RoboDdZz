@@ -490,15 +490,15 @@ while True:
 
         # si clic droit, on supprime tous les goals
         # finalement maintenant on bouge le robot adverse
-        if event.type == pygame.MOUSEBUTTONUP or event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 3: # right click
-                # goals_positions = [[TABLE_WIDTH/2, TABLE_HEIGHT/2, 0]]
-                mouse_pos = pygame.mouse.get_pos()
-                x, y = mouse_pos
-                x, y = x-45, y-30
-                x, y = x/(WIDTH-90)*TABLE_WIDTH, y/(HEIGHT-60)*TABLE_HEIGHT
-                obstacle = Obstacle(x,y,10,10)
-                expanded_obstacle_poly = avoidance.expand(obstacle.polygon, offset)
+        if event.type == pygame.MOUSEMOTION and pygame.mouse.get_pressed()[2]:
+            # if event.button == 3: # right click
+            # goals_positions = [[TABLE_WIDTH/2, TABLE_HEIGHT/2, 0]]
+            mouse_pos = pygame.mouse.get_pos()
+            x, y = mouse_pos
+            x, y = x-45, y-30
+            x, y = x/(WIDTH-90)*TABLE_WIDTH, y/(HEIGHT-60)*TABLE_HEIGHT
+            obstacle = Obstacle(x,y,10,10)
+            expanded_obstacle_poly = avoidance.expand(obstacle.polygon, offset)
 
     button.listen(events)
     pw.update(events)
@@ -506,7 +506,7 @@ while True:
 
     # recompute path
     if len(goals_positions) > 0:
-        theta = 0 # test only DEBUG TODO
+        theta = goals_positions[-1][2]
 
         start = Point2(robot.pos[0],robot.pos[1])
         goal = Point2(goals_positions[-1][0],goals_positions[-1][1])
@@ -514,7 +514,7 @@ while True:
 
         path = avoidance.find_avoidance_path(graph, 0, 1).nodes # mais en soit renvoie aussi le coût
 
-        goals=[]
+        goals = []
         for p in path[1:]: # we don't add the start point
             goals.append([float(dico_all_points[p][0]),float(dico_all_points[p][1]), theta])
         goals_positions = goals
@@ -531,16 +531,19 @@ while True:
         pointA = dico_all_points[A]
         for b in B.keys():
             pointB = dico_all_points[b]
-            pygame.draw.line(screen, BLACK, real_to_screen(float(pointA[0]),float(pointA[1])), real_to_screen(float(pointB[0]),float(pointB[1])),3)
+            pygame.draw.line(screen, BLACK, 
+                             real_to_screen(float(pointA[0]),float(pointA[1])), 
+                             real_to_screen(float(pointB[0]),float(pointB[1])),
+                             3)
 
     # draw path
     if path is not None:
         nodes = path
         for i in range(len(nodes)-1):
             pygame.draw.line(screen, GREEN, 
-                real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), real_to_screen(dico_all_points[nodes[i+1]][0], dico_all_points[nodes[i+1]][1]), 
-                5
-            )
+                real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), 
+                real_to_screen(dico_all_points[nodes[i+1]][0], dico_all_points[nodes[i+1]][1]), 
+                5)
     
 
     # draw the obstacle
