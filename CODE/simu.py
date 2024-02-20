@@ -65,15 +65,17 @@ class Robot():
         self.vitesse_roue1 = 0
         self.vitesse_roue2 = 0
 
+        self.MAX_ACCEL_PER_CYCLE = 1000/FPS # rotation/s/cycle
+
         self.current_goal = self.pos
         self.goal_reached = True
 
-        self.max_wheel_speed = 1  # rad/s
+        # self.max_wheel_speed = 1  # rad/s
         self.max_ang_speed = 1.2  # pi/2  # rad/s
 
         # juste un P, normal pour la position
-        self.pid_pos_x = PID(10.0, 0, 0, 1/FPS)
-        self.pid_pos_y = PID(10.0, 0, 0, 1/FPS)
+        self.pid_pos_x = PID(5, 0, 0, 1/FPS)
+        self.pid_pos_y = PID(5, 0, 0, 1/FPS)
         self.pid_pos_theta = PID(50, 0, 0, 1/FPS)
 
     def goto(self, x, y, theta):
@@ -123,7 +125,7 @@ class Robot():
 
         self.current_goal = goals_positions[0]
 
-        if abs(self.pos[0] - self.current_goal[0]) < error_max_lin and abs(self.pos[1] - self.current_goal[1]) < error_max_lin:  # and
+        if abs(self.pos[0] - self.current_goal[0]) < error_max_lin and abs(self.pos[1] - self.current_goal[1]) < error_max_lin:
             if self.check_angle(self.pos[2], self.current_goal[2], error_max_ang):
                 self.goto_next_goal()
                 ic("GOAL REACHED")
@@ -158,19 +160,42 @@ class Robot():
 
     def vitesses_to_roues(self):
         # On calcule la vitesse de chaque roue en mètres par seconde
-        self.vitesse_roue0 = 0.5 * \
+        cmd_vitesse_roue0 = 0.5 * \
             self.vitesse_lineaire[0] - sqrt(3) / 2 * self.vitesse_lineaire[1] - \
             self.rayon_robot * self.vitesse_angulaire
-        self.vitesse_roue1 = 0.5 * \
+        cmd_vitesse_roue1 = 0.5 * \
             self.vitesse_lineaire[0] + sqrt(3) / 2 * self.vitesse_lineaire[1] - \
             self.rayon_robot * self.vitesse_angulaire
-        self.vitesse_roue2 = self.vitesse_lineaire[0] - \
+        cmd_vitesse_roue2 = self.vitesse_lineaire[0] - \
             self.rayon_robot * self.vitesse_angulaire
 
+
         # limit the speeds
-        # self.vitesse_roue0 = max(self.vitesse_roue0, min(self.vitesse_roue0, self.max_wheel_speed))
-        # self.vitesse_roue1 = max(self.vitesse_roue1, min(self.vitesse_roue1, self.max_wheel_speed))
-        # self.vitesse_roue2 = max(self.vitesse_roue2, min(self.vitesse_roue2, self.max_wheel_speed))
+        # calc les accels
+        accel_roue_0 = cmd_vitesse_roue0 - self.vitesse_roue0
+        accel_roue_1 = cmd_vitesse_roue1 - self.vitesse_roue1
+        accel_roue_2 = cmd_vitesse_roue2 - self.vitesse_roue2
+        
+        abs_accel_roue_0 = abs(accel_roue_0)
+        abs_accel_roue_1 = abs(accel_roue_1)
+        abs_accel_roue_2 = abs(accel_roue_2)
+
+        
+        abs_accel_roues = [abs_accel_roue_0, abs_accel_roue_1, abs_accel_roue_2]
+
+        if abs_accel_roue_0 < self.MAX_ACCEL_PER_CYCLE and abs_accel_roue_1 < self.MAX_ACCEL_PER_CYCLE and abs_accel_roue_2 < self.MAX_ACCEL_PER_CYCLE:
+            # acceleration requested is ok, no need to accelerate gradually.
+            self.vitesse_roue0 = cmd_vitesse_roue0
+            self.vitesse_roue1 = cmd_vitesse_roue1
+            self.vitesse_roue2 = cmd_vitesse_roue2
+        else:
+            speed_ratio = self.MAX_ACCEL_PER_CYCLE / max(abs_accel_roues)
+            self.vitesse_roue0 = self.vitesse_roue0 + speed_ratio * accel_roue_0
+            self.vitesse_roue1 = self.vitesse_roue1 + speed_ratio * accel_roue_1
+            self.vitesse_roue2 = self.vitesse_roue2 + speed_ratio * accel_roue_2
+
+
+
 
 
 class Obstacle():
@@ -396,7 +421,8 @@ def draw():
 
 robot = Robot()
 obstacle = Obstacle(100, 100, 10, 10)
-
+offset = 15
+expanded_obstacle_poly = avoidance.expand(obstacle.polygon, offset)
 
 def on_click():
     global robot
@@ -419,8 +445,7 @@ waiting_for_release = False
 pos_waiting = []
 
 
-offset = 15
-expanded_obstacle_poly = avoidance.expand(obstacle.polygon, offset)
+
 graph = Graph()
 path = None
 
@@ -436,7 +461,7 @@ while True:
                 sys.exit()
 
         # si un clic souris, on va à la position du clic
-        if event.type == pygame.MOUSEBUTTONDOWN:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1: # left click down
             mouse_pos = pygame.mouse.get_pos()
             x, y = mouse_pos
             x, y = x-45, y-30
@@ -444,7 +469,7 @@ while True:
             waiting_for_release = True
             pos_waiting = [x, y]
 
-        if event.type == pygame.MOUSEBUTTONUP and waiting_for_release:
+        if event.type == pygame.MOUSEBUTTONUP and waiting_for_release and event.button == 1: # left click up
             # calcule la position sur la table
             mouse_pos = pygame.mouse.get_pos()
             x, y = mouse_pos
@@ -460,9 +485,16 @@ while True:
             goals_positions.append([pos_waiting[0],pos_waiting[1],theta])
 
         # si clic droit, on supprime tous les goals
-        if event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 3:
-                goals_positions = [[TABLE_WIDTH/2, TABLE_HEIGHT/2, 0]]
+        # finalement maintenant on bouge le robot adverse
+        if event.type == pygame.MOUSEBUTTONUP or event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 3: # right click
+                # goals_positions = [[TABLE_WIDTH/2, TABLE_HEIGHT/2, 0]]
+                mouse_pos = pygame.mouse.get_pos()
+                x, y = mouse_pos
+                x, y = x-45, y-30
+                x, y = x/(WIDTH-90)*TABLE_WIDTH, y/(HEIGHT-60)*TABLE_HEIGHT
+                obstacle = Obstacle(x,y,10,10)
+                expanded_obstacle_poly = avoidance.expand(obstacle.polygon, offset)
 
     button.listen(events)
     pw.update(events)
@@ -522,3 +554,7 @@ while True:
     pygame.display.flip()
     
     clock.tick(FPS)
+
+    # delete the last point so that the array does not get to heavy
+    if len(robot.robot_positions)>500:
+        robot.robot_positions.pop(0)
