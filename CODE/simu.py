@@ -8,6 +8,7 @@
 # conda activate myenv
 
 from icecream import ic
+from typing import List
 import pygame
 import sys
 import time
@@ -77,6 +78,11 @@ class Robot():
         self.pid_pos_x = PID(5, 0, 0, 1/FPS)
         self.pid_pos_y = PID(5, 0, 0, 1/FPS)
         self.pid_pos_theta = PID(50, 0, 0, 1/FPS)
+
+    def write_speeds(self, speeds: List) -> None:
+        self.vitesse_roue0 = speeds[0]
+        self.vitesse_roue1 = speeds[1]
+        self.vitesse_roue2 = speeds[2]
 
     def goto(self, x, y, theta):
         # si c'est plus court de tourner dans l'autre sens, on tourne dans l'autre sens
@@ -185,14 +191,12 @@ class Robot():
 
         if abs_accel_roue_0 < self.MAX_ACCEL_PER_CYCLE and abs_accel_roue_1 < self.MAX_ACCEL_PER_CYCLE and abs_accel_roue_2 < self.MAX_ACCEL_PER_CYCLE:
             # acceleration requested is ok, no need to accelerate gradually.
-            self.vitesse_roue0 = cmd_vitesse_roue0
-            self.vitesse_roue1 = cmd_vitesse_roue1
-            self.vitesse_roue2 = cmd_vitesse_roue2
+            self.write_speeds([cmd_vitesse_roue0, cmd_vitesse_roue1, cmd_vitesse_roue2])
         else:
             speed_ratio = self.MAX_ACCEL_PER_CYCLE / max(abs_accel_roues)
-            self.vitesse_roue0 = self.vitesse_roue0 + speed_ratio * accel_roue_0
-            self.vitesse_roue1 = self.vitesse_roue1 + speed_ratio * accel_roue_1
-            self.vitesse_roue2 = self.vitesse_roue2 + speed_ratio * accel_roue_2
+            self.write_speeds([self.vitesse_roue0 + speed_ratio * accel_roue_0, 
+                               self.vitesse_roue1 + speed_ratio * accel_roue_1, 
+                               self.vitesse_roue2 + speed_ratio * accel_roue_2])
 
 
 
@@ -514,7 +518,6 @@ while True:
         for p in path[1:]: # we don't add the start point
             goals.append([float(dico_all_points[p][0]),float(dico_all_points[p][1]), theta])
         goals_positions = goals
-        # ic(goals_positions)
 
 
 
@@ -523,26 +526,20 @@ while True:
     robot.update_robot_position()
 
     draw()
-
-    """
     # draw the graph
-    # print(graph)
     for A,B in graph.items():
-        # print(A,B)
         pointA = dico_all_points[A]
         for b in B.keys():
             pointB = dico_all_points[b]
-            # print()
-            # print(robot.pos)
-            # print(pointA, pointB)
-            pygame.draw.line(screen, BLACK, real_to_screen(float(pointA[0]),float(pointA[1])), real_to_screen(float(pointB[0]),float(pointB[1])),10)
-"""
+            pygame.draw.line(screen, BLACK, real_to_screen(float(pointA[0]),float(pointA[1])), real_to_screen(float(pointB[0]),float(pointB[1])),3)
+
     # draw path
     if path is not None:
         nodes = path
         for i in range(len(nodes)-1):
             pygame.draw.line(screen, GREEN, 
-                real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), real_to_screen(dico_all_points[nodes[i+1]][0], dico_all_points[nodes[i+1]][1]), 3
+                real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), real_to_screen(dico_all_points[nodes[i+1]][0], dico_all_points[nodes[i+1]][1]), 
+                5
             )
     
 
