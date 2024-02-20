@@ -81,7 +81,7 @@ class Robot():
         elif error_theta < -pi:
             error_theta += 2*pi
         self.vitesse_angulaire = self.pid_pos_theta.update(error_theta)
-        
+
         # limit the speeds (speeds can be negative)
         self.vitesse_angulaire = max(-self.max_ang_speed,
                                         min(self.vitesse_angulaire, self.max_ang_speed))
@@ -121,12 +121,10 @@ class Robot():
         if abs(self.pos[0] - self.current_goal[0]) < error_max_lin and abs(self.pos[1] - self.current_goal[1]) < error_max_lin:  # and
             # self.check_angle(self.pos[2], self.current_goal[2], error_max_ang):
             if (self.current_goal_index < len(goals_positions)-1):
-                self.current_goal_index += 1
+                self.goto_next_goal()
+
             # self.current_goal_index %= len(goals_positions)
             self.goal_reached = True
-            # self.pid_pos_x.reset()
-            # self.pid_pos_y.reset()
-            # self.pid_pos_theta.reset()
 
     def check_rotation_reached(self):
         error_max_ang = 0.01
@@ -452,25 +450,31 @@ while True:
             x, y = x/(WIDTH-90)*TABLE_WIDTH, y/(HEIGHT-60)*TABLE_HEIGHT
             # calcule l'angle demandé
             theta = atan2(y-pos_waiting[1], x-pos_waiting[0]) + pi/2
+            
+            # GOTO
             ic("goto", pos_waiting, theta*180/pi)
-            goals_positions.append([pos_waiting[0], pos_waiting[1], theta])
+            # goals_positions.append([pos_waiting[0], pos_waiting[1], theta])
             waiting_for_release = False
 
-            robot.goto_next_goal()
 
-            # start_time = time.time() #debug
-            # start = Point2(robot.pos[0],robot.pos[1])
-            # goal = Point2(pos_waiting[0],pos_waiting[1])
-            # graph, dico_all_points = avoidance.create_graph(start, goal, expanded_obstacle_poly)
+            start_time = time.time() #debug
+            start = Point2(robot.pos[0],robot.pos[1])
+            goal = Point2(pos_waiting[0],pos_waiting[1])
+            graph, dico_all_points = avoidance.create_graph(start, goal, expanded_obstacle_poly)
             # start = (robot.pos[0],robot.pos[1])
             # goal = (pos_waiting[0], pos_waiting[1])
             # ic(dico_all_points)
             # ic(graph)
-            # path = avoidance.find_avoidance_path(graph, 0, 1)
+            path = avoidance.find_avoidance_path(graph, 0, 1).nodes # mais en soit renvoie aussi le cout
+            print(path)
             # ic(path)
-            # total_time = time.time()-start_time
-            # ic(total_time)
+            total_time = ic(time.time()-start_time)
+        
+            for p in path[1:]: # we don't add the start point
+                goals_positions.append([float(dico_all_points[p][0]),float(dico_all_points[p][1]), theta])
             
+            robot.goto_next_goal()
+
 
         # si clic droit, on supprime tous les goals
         if event.type == pygame.MOUSEBUTTONUP:
@@ -497,10 +501,10 @@ while True:
             # print(robot.pos)
             # print(pointA, pointB)
             pygame.draw.line(screen, BLACK, real_to_screen(float(pointA[0]),float(pointA[1])), real_to_screen(float(pointB[0]),float(pointB[1])),10)
-
+"""
     # draw path
     if path is not None:
-        nodes = path.nodes
+        nodes = path
         for i in range(len(nodes)-1):
             pygame.draw.line(screen, GREEN, 
                 real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), real_to_screen(dico_all_points[nodes[i+1]][0], dico_all_points[nodes[i+1]][1]), 3
@@ -510,7 +514,7 @@ while True:
     # draw the obstacle
     draw_obstacle(screen, obstacle.polygon, RED)    
     draw_obstacle(screen, expanded_obstacle_poly, YELLOW)  
-    """
+    
     
     pygame.display.flip()
     
