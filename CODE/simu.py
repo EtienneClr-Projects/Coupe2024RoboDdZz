@@ -5,7 +5,8 @@
 
 # - definir vitesse max par roue et lineaire (x et y combines)
 
-from sympy.geometry import *
+# conda activate myenv
+
 from icecream import ic
 import pygame
 import sys
@@ -16,6 +17,8 @@ from pid import PID
 import pygame_widgets as pw
 from pygame_widgets.button import Button
 import avoidance
+from skgeom import *
+from dijkstar import Graph
 
 pygame.init()
 
@@ -62,7 +65,7 @@ class Robot():
         self.current_goal = self.pos
         self.goal_reached = True
 
-        # self.max_lin_speed = 30  # cm/s
+        self.max_wheel_speed = 1  # rad/s
         self.max_ang_speed = 1.2  # pi/2  # rad/s
 
         # juste un P, normal pour la position
@@ -71,36 +74,39 @@ class Robot():
         self.pid_pos_theta = PID(50, 0, 0, 1/FPS)
 
     def goto(self, x, y, theta):
-        # si on a pas fini la rotation, on continue à tourner
-        # sinon on fait la translation
-        if not self.has_finished_rotation:
-            # si c'est plus court de tourner dans l'autre sens, on tourne dans l'autre sens
-            error_theta = theta - self.pos[2]
-            if error_theta > pi:
-                error_theta -= 2*pi
-            elif error_theta < -pi:
-                error_theta += 2*pi
-            self.vitesse_angulaire = self.pid_pos_theta.update(error_theta)
-            # limit the speeds (speeds can be negative)
-            self.vitesse_angulaire = max(-self.max_ang_speed,
-                                         min(self.vitesse_angulaire, self.max_ang_speed))
-            # print("error_theta", error_theta,
-            #       "vitesse_angulaire", self.vitesse_angulaire)
-            if self.check_rotation_reached():
-                self.has_finished_rotation = True
-                self.vitesse_angulaire = 0
-        # else:
-            # # PID
-            self.vitesse_lineaire = [
-                self.pid_pos_x.update(x - self.pos[0]),
-                self.pid_pos_y.update(y - self.pos[1])
-            ]
+        # si c'est plus court de tourner dans l'autre sens, on tourne dans l'autre sens
+        error_theta = theta - self.pos[2]
+        if error_theta > pi:
+            error_theta -= 2*pi
+        elif error_theta < -pi:
+            error_theta += 2*pi
+        self.vitesse_angulaire = self.pid_pos_theta.update(error_theta)
+        
+        # limit the speeds (speeds can be negative)
+        self.vitesse_angulaire = max(-self.max_ang_speed,
+                                        min(self.vitesse_angulaire, self.max_ang_speed))
+        # print("error_theta", error_theta,
+        #       "vitesse_angulaire", self.vitesse_angulaire)
+        if self.check_rotation_reached():
+            self.has_finished_rotation = True
+            self.vitesse_angulaire = 0
+
+        # # PID
+        self.vitesse_lineaire = [
+            self.pid_pos_x.update(x - self.pos[0]),
+            self.pid_pos_y.update(y - self.pos[1])
+        ]
 
     def goto_next_goal(self):
         self.current_goal_index += 1
         self.goal_reached = False
         self.has_finished_rotation = False
         self.current_goal = goals_positions[self.current_goal_index]
+
+        # if (self.current_goal_index>0):
+        #     self.pid_pos_x.display("pid_pos_x")
+        #     self.pid_pos_y.display("pid_pos_y")
+        #     self.pid_pos_theta.display("pid_pos_theta")
 
     def check_angle(self, angle1, angle2, error_max):
         error = abs(angle1 - angle2)
@@ -118,6 +124,9 @@ class Robot():
                 self.current_goal_index += 1
             # self.current_goal_index %= len(goals_positions)
             self.goal_reached = True
+            # self.pid_pos_x.reset()
+            # self.pid_pos_y.reset()
+            # self.pid_pos_theta.reset()
 
     def check_rotation_reached(self):
         error_max_ang = 0.01
@@ -156,6 +165,11 @@ class Robot():
         self.vitesse_roue2 = self.vitesse_lineaire[0] - \
             self.rayon_robot * self.vitesse_angulaire
 
+        # limit the speeds
+        # self.vitesse_roue0 = max(self.vitesse_roue0, min(self.vitesse_roue0, self.max_wheel_speed))
+        # self.vitesse_roue1 = max(self.vitesse_roue1, min(self.vitesse_roue1, self.max_wheel_speed))
+        # self.vitesse_roue2 = max(self.vitesse_roue2, min(self.vitesse_roue2, self.max_wheel_speed))
+
 
 class Obstacle():
     # carré
@@ -164,10 +178,16 @@ class Obstacle():
         self.center_y = center_y
         self.width = width
         self.height = height
+        self.polygon = Polygon([Point2(center_x+width/2,center_y+height/2),
+                               Point2(center_x+width/2,center_y-height/2),
+                               Point2(center_x-width/2,center_y-height/2),
+                               Point2(center_x-width/2,center_y+height/2)])
 
 
 # Fonction pour convertir les coordonnées réelles en coordonnées écran
 def real_to_screen(x, y):
+    x = float(x)
+    y = float(y)
     x_factor = WIDTH / TABLE_WIDTH
     y_factor = HEIGHT / TABLE_HEIGHT
     # offset to center the table
@@ -261,17 +281,13 @@ def draw_roues(screen, screen_x, screen_y, robot_theta):
         screen.blit(text, textRect)
 
 
-def draw_obstacle(screen, obstacle):
-    screen_x, screen_y = real_to_screen(obstacle.center_x-obstacle.width/2,
-                                        obstacle.center_y-obstacle.height/2)
-    screen_width, screen_height = real_to_screen(
-        obstacle.width, obstacle.height)
-    pygame.draw.rect(screen, RED, (screen_x, screen_y,
-                     screen_width, screen_height), 0)
-
-    # draw the center
-    # pygame.draw.circle(screen, BLACK, (screen_x+screen_width/2,
-    #                     screen_y+screen_height/2), 3)
+def draw_obstacle(screen, obstacle, color):
+    vertices = list(obstacle.vertices)
+    vertices.append(vertices[0])
+    for i in range(len(vertices)-1):
+        A = real_to_screen(float(vertices[i].x()),float(vertices[i].y()))
+        B = real_to_screen(float(vertices[i+1].x()),float(vertices[i+1].y()))
+        pygame.draw.line(screen, color, A, B)
 
 
 def draw():
@@ -402,10 +418,11 @@ button = Button(
 waiting_for_release = False
 pos_waiting = []
 
-DEBUG_moved = False
 
-graph = avoidance.create_graph(robot.pos, [obstacle.center_x, obstacle.center_y, obstacle.width, obstacle.height], [
-                               0, 0, TABLE_WIDTH, TABLE_HEIGHT])
+offset = 15
+expanded_obstacle_poly = avoidance.expand(obstacle.polygon, offset)
+graph = Graph()
+path = None
 
 while True:
     events = pygame.event.get()
@@ -428,25 +445,38 @@ while True:
             pos_waiting = [x, y]
 
         if event.type == pygame.MOUSEBUTTONUP and waiting_for_release:
+            # calcule la position sur la table
             mouse_pos = pygame.mouse.get_pos()
             x, y = mouse_pos
             x, y = x-45, y-30
             x, y = x/(WIDTH-90)*TABLE_WIDTH, y/(HEIGHT-60)*TABLE_HEIGHT
-            # angle
+            # calcule l'angle demandé
             theta = atan2(y-pos_waiting[1], x-pos_waiting[0]) + pi/2
-            print("goto", pos_waiting, theta*180/pi)
+            ic("goto", pos_waiting, theta*180/pi)
             goals_positions.append([pos_waiting[0], pos_waiting[1], theta])
             waiting_for_release = False
-            DEBUG_moved = True
-            # robot.goto_next_goal()
-            path = avoidance.find_avoidance_path(
-                graph, "robot", (pos_waiting[0], pos_waiting[1]))
-            print(path)
+
+            robot.goto_next_goal()
+
+            # start_time = time.time() #debug
+            # start = Point2(robot.pos[0],robot.pos[1])
+            # goal = Point2(pos_waiting[0],pos_waiting[1])
+            # graph, dico_all_points = avoidance.create_graph(start, goal, expanded_obstacle_poly)
+            # start = (robot.pos[0],robot.pos[1])
+            # goal = (pos_waiting[0], pos_waiting[1])
+            # ic(dico_all_points)
+            # ic(graph)
+            # path = avoidance.find_avoidance_path(graph, 0, 1)
+            # ic(path)
+            # total_time = time.time()-start_time
+            # ic(total_time)
+            
 
         # si clic droit, on supprime tous les goals
         if event.type == pygame.MOUSEBUTTONUP:
             if event.button == 3:
                 goals_positions = [[TABLE_WIDTH/2, TABLE_HEIGHT/2, 0]]
+
     button.listen(events)
     pw.update(events)
 
@@ -455,33 +485,33 @@ while True:
 
     draw()
 
+    """
     # draw the graph
     # print(graph)
-    # for edge in graph.edges:
-    #     pygame.draw.line(screen, BLACK, real_to_screen(graph.nodes[edge[0]][0], graph.nodes[edge[0]][1]), real_to_screen(graph.nodes[edge[1]][0], graph.nodes[edge[1]][1]), 2)
-    # cree un polygon carre pour tester
-    w = 50
-    poly_obstacle = Polygon((100, 100), (100+w, 100+0), (100+w,100+ w), (100+0, 100+w))
-    pygame.draw.polygon(screen, RED, [real_to_screen(poly_obstacle.vertices[0][0], poly_obstacle.vertices[0][1]),
-                                      real_to_screen(
-                                          poly_obstacle.vertices[1][0], poly_obstacle.vertices[1][1]),
-                                      real_to_screen(
-                                          poly_obstacle.vertices[2][0], poly_obstacle.vertices[2][1]),
-                                      real_to_screen(poly_obstacle.vertices[3][0], poly_obstacle.vertices[3][1])], 0)
-    # pygame.draw.rect(screen, RED, (real_to_screen(0,0), real_to_screen(w,w)), 2)
+    for A,B in graph.items():
+        # print(A,B)
+        pointA = dico_all_points[A]
+        for b in B.keys():
+            pointB = dico_all_points[b]
+            # print()
+            # print(robot.pos)
+            # print(pointA, pointB)
+            pygame.draw.line(screen, BLACK, real_to_screen(float(pointA[0]),float(pointA[1])), real_to_screen(float(pointB[0]),float(pointB[1])),10)
 
-    # offset de l'obstacle
-    offset = 10
-    expanded_obstacle_poly = avoidance.offset_polygon(poly_obstacle, offset)
-    pygame.draw.polygon(screen, YELLOW, [real_to_screen(expanded_obstacle_poly.vertices[0][0], expanded_obstacle_poly.vertices[0][1]),
-                                         real_to_screen(
-                                             expanded_obstacle_poly.vertices[1][0], expanded_obstacle_poly.vertices[1][1]),
-                                         real_to_screen(
-                                             expanded_obstacle_poly.vertices[2][0], expanded_obstacle_poly.vertices[2][1]),
-                                         real_to_screen(expanded_obstacle_poly.vertices[3][0], expanded_obstacle_poly.vertices[3][1])], 2)
+    # draw path
+    if path is not None:
+        nodes = path.nodes
+        for i in range(len(nodes)-1):
+            pygame.draw.line(screen, GREEN, 
+                real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), real_to_screen(dico_all_points[nodes[i+1]][0], dico_all_points[nodes[i+1]][1]), 3
+            )
+    
+
+    # draw the obstacle
+    draw_obstacle(screen, obstacle.polygon, RED)    
+    draw_obstacle(screen, expanded_obstacle_poly, YELLOW)  
+    """
+    
     pygame.display.flip()
-
+    
     clock.tick(FPS)
-    # if DEBUG_moved:
-    #     # quit()
-    #     pass

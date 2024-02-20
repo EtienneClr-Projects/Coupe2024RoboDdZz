@@ -1,81 +1,109 @@
 # lib pour l'evitement d'obstacle grace a la methode du graphe de visibilité
 
+from math_bind import *
+
 from dijkstar import Graph, find_path
 from skgeom import *
-from skgeom.draw import draw
+from icecream import ic
 
 
-# recuperation des points des objets de la table
-def create_graph(robot, obstacle, table):
-    # robot = [x, y, r]
-    # obstacle = [x_center, y_center, width, height]
-    # table = [x, y, width, height]
+def create_graph(start: sg.Point2, goal: sg.Point2, expanded_obstacle_poly: sg.Polygon):
+    """Create the graph of navigation from is point to the goal
 
-    # ajout de l'obstacle
-    o_center_x = obstacle[0]
-    o_center_y = obstacle[1]
-    o_width = obstacle[2]
-    o_height = obstacle[3]
-    # create a polygon
-    obstacle_poly = Polygon((o_center_x, o_center_y),
-                            (o_center_x + o_width, o_center_y),
-                            (o_center_x + o_width, o_center_y + o_height),
-                            (o_center_x, o_center_y + o_height))
+    Args:
+        start (sg.Point2): The start point of the robot (robot pos)
+        goal (sg.Point2): The goal point of the robot
+        expanded_obstacle_poly (sg.Polygon): The polygon of the obstacle (expanded)
+    """
 
-    # offset de l'obstacle
-    offset = 10
-    expanded_obstacle_poly = offset_polygon(obstacle_poly, offset)
-
-    # ajout de la table
-    t_x = table[0]
-    t_y = table[1]
-    t_width = table[2]
-    t_height = table[3]
-    # create a polygon
-    table_poly = Polygon((t_x, t_y),
-                         (t_x + t_width, t_y),
-                         (t_x + t_width, t_y + t_height),
-                         (t_x, t_y + t_height))
-
-    # creation du graphe
+    ic("CREATING GRAPH\n\n")
     graph = Graph()
 
-    # on cree le graphe de visibilité
-    # on ajoute les points du robot
-    robot_x = robot[0]
-    robot_y = robot[1]
-    robot_r = robot[2]
-    graph.add_node("robot")
+    # create a dictionnary associating each point with an index
+    dico_all_points = {}
+    dico_all_points[len(dico_all_points)] = (start.x(),start.y())
+    dico_all_points[len(dico_all_points)] = (goal.x(),goal.y())
+    for point in list(expanded_obstacle_poly.vertices):
+        dico_all_points[len(dico_all_points)] = point_to_tuple(point)
+    
 
-    # pour chaque combinaison de points de l'obstacle avec le point du robot on ajoute une arete si il n'y a pas d'obstacle entre les deux points
-    for i in range(4):
-        graph.add_node("obstacle" + str(i))
-        for j in range(4):
-            if i != j:
-                # on verifie si il n'y a pas d'obstacle entre les deux points
-                # on cree une droite entre les deux points
-                line = Line(
-                    expanded_obstacle_poly.vertices[i], expanded_obstacle_poly.vertices[j])
-                # on verifie si la droite ne coupe pas l'obstacle
-                if not line.intersection(expanded_obstacle_poly):
-                    # on verifie si la droite ne coupe pas la table
-                    if not line.intersection(table_poly):
-                        graph.add_edge("obstacle" + str(i),
-                                       "obstacle" + str(j), 1)
-                        graph.add_edge("obstacle" + str(j),
-                                       "obstacle" + str(i), 1)
-                        # # on ajoute les points de l'obstacle
-                        # graph.add_node("obstacle" + str(j), expanded_obstacle_poly.vertices[j])
-    return graph
+# GENERATING COMBINATIONS
+    # generate each combination between start/goal to every other points to test visibility
+    all_combinations = []
+    for key in dico_all_points.keys():
+        if key != 0 and key != 1: # start and goal
+            all_combinations.append((key, 0))
+            all_combinations.append((key, 1))
 
-# recherche du chemin le plus court
+    # Add the segment between start and goal as a combination to test
+    all_combinations.append((0,1)) 
+
+# ADDING EDGES TO THE GRAPH
+    # generate the edges of the polygon that should not be crossed
+    # Todo TROUVER UNE AUTRE METHODE
+    poly_edges = []
+    for i in range(len(dico_all_points)-2):
+        if i==len(dico_all_points)-2-1:
+            poly_edges.append((i+2, 2))
+        else:
+            poly_edges.append((i+2, i+2+1))
+
+    # Add the edges of the polygon to the graph as they are admissible by nature
+    for seg in poly_edges:
+        d = dist(dico_all_points[seg[0]],dico_all_points[seg[1]])
+        graph.add_edge(seg[0],seg[1],d)
+        graph.add_edge(seg[1],seg[0],d)
+
+    # check for each segment/combination of two points if they cross the obstacle
+    # if not we add them as edges to the graph
+    for comb in all_combinations:
+        a, b = comb
+        pointA = dico_all_points[a]
+        pointB = dico_all_points[b]
+        segment = Segment2(tuple_to_point(pointA),tuple_to_point(pointB))
+
+        # Check if there is an intersection with one obstacle
+        no_inter = True
+        for edge in expanded_obstacle_poly.edges:
+            inter = intersection(edge, segment)
+            if inter == None:
+                continue
+            
+            inter = point_to_tuple(inter)
+            edgeA = point_to_tuple(edge[0])
+            edgeB = point_to_tuple(edge[1])
+            
+            # if segments have a common point, having an intersection is OK
+            if not eq_tuples(pointA, inter) and not eq_tuples(inter, pointB) and not eq_tuples(inter, edgeA) and not eq_tuples(inter,edgeB):
+                no_inter = False
+                break
+
+        if no_inter:
+            d = dist(dico_all_points[a],dico_all_points[b])
+            graph.add_edge(a,b,d)
+            graph.add_edge(b,a,d)
+            # ic(
+            #     str(pointA[0])+","+str(pointA[1]),
+            #     str(pointB[0])+","+str(pointB[1])
+            # )
+            # print()
+
+
+    ic("CREATED GRAPH\n\n")
+
+    return graph,dico_all_points
+
 
 
 def find_avoidance_path(graph, start, end):
+    """Find a path between the start and the end with the given graph if possible
+
+    Args:
+        graph (Graph): The graph of visibility
+        start (sg.Point2): The start point
+        end (sg.Point2): The goal point
+
+    Returns:
+        list[int]: The list of the indices of the points of the path
+    """
     return find_path(graph, start, end)
-
-
-if __name__ == "__main__":
-    poly = Polygon([Point2(0, 0), Point2(0, 3), Point2(3, 3)])
-    draw(poly)
-
