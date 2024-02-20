@@ -8,6 +8,7 @@ from icecream import ic
 
 
 def create_graph(start: sg.Point2, goal: sg.Point2, expanded_obstacle_poly: sg.Polygon):
+    ic.disable()
     """Create the graph of navigation from is point to the goal
 
     Args:
@@ -90,6 +91,7 @@ def create_graph(start: sg.Point2, goal: sg.Point2, expanded_obstacle_poly: sg.P
 
 
     ic("CREATED GRAPH\n\n")
+    ic.enable()
 
     return graph,dico_all_points
 

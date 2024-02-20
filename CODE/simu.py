@@ -40,6 +40,10 @@ YELLOW = (255, 255, 0)
 PINK = (255, 0, 255)
 
 
+
+goals_positions = [[TABLE_WIDTH/2, TABLE_HEIGHT/2, 0],
+                   ]  # [x, y, theta]
+
 # ROBOT
 
 
@@ -61,7 +65,6 @@ class Robot():
         self.vitesse_roue1 = 0
         self.vitesse_roue2 = 0
 
-        self.current_goal_index = -1
         self.current_goal = self.pos
         self.goal_reached = True
 
@@ -98,16 +101,13 @@ class Robot():
         ]
 
     def goto_next_goal(self):
-        self.current_goal_index += 1
         self.goal_reached = False
         self.has_finished_rotation = False
-        self.current_goal = goals_positions[self.current_goal_index]
-
-        # if (self.current_goal_index>0):
-        #     self.pid_pos_x.display("pid_pos_x")
-        #     self.pid_pos_y.display("pid_pos_y")
-        #     self.pid_pos_theta.display("pid_pos_theta")
-
+        if len(goals_positions)>0:
+            goals_positions.pop(0)
+        if len(goals_positions)>0:
+            self.current_goal = goals_positions[0]
+        
     def check_angle(self, angle1, angle2, error_max):
         error = abs(angle1 - angle2)
         if (abs(2*pi-error) < 0.01):
@@ -118,13 +118,17 @@ class Robot():
         error_max_lin = 1
         error_max_ang = 0.01
 
-        if abs(self.pos[0] - self.current_goal[0]) < error_max_lin and abs(self.pos[1] - self.current_goal[1]) < error_max_lin:  # and
-            # self.check_angle(self.pos[2], self.current_goal[2], error_max_ang):
-            if (self.current_goal_index < len(goals_positions)-1):
-                self.goto_next_goal()
+        if (len(goals_positions))==0:
+            return True
 
-            # self.current_goal_index %= len(goals_positions)
-            self.goal_reached = True
+        self.current_goal = goals_positions[0]
+
+        if abs(self.pos[0] - self.current_goal[0]) < error_max_lin and abs(self.pos[1] - self.current_goal[1]) < error_max_lin:  # and
+            if self.check_angle(self.pos[2], self.current_goal[2], error_max_ang):
+                self.goto_next_goal()
+                ic("GOAL REACHED")
+
+                self.goal_reached = True
 
     def check_rotation_reached(self):
         error_max_ang = 0.01
@@ -390,8 +394,6 @@ def draw():
     # pygame.display.flip() # TODO remettre
 
 
-goals_positions = [[TABLE_WIDTH/2, TABLE_HEIGHT/2, 0],
-                   ]  # [x, y, theta]
 robot = Robot()
 obstacle = Obstacle(100, 100, 10, 10)
 
@@ -453,27 +455,23 @@ while True:
             
             # GOTO
             ic("goto", pos_waiting, theta*180/pi)
-            # goals_positions.append([pos_waiting[0], pos_waiting[1], theta])
             waiting_for_release = False
 
 
-            start_time = time.time() #debug
             start = Point2(robot.pos[0],robot.pos[1])
             goal = Point2(pos_waiting[0],pos_waiting[1])
             graph, dico_all_points = avoidance.create_graph(start, goal, expanded_obstacle_poly)
-            # start = (robot.pos[0],robot.pos[1])
-            # goal = (pos_waiting[0], pos_waiting[1])
-            # ic(dico_all_points)
-            # ic(graph)
-            path = avoidance.find_avoidance_path(graph, 0, 1).nodes # mais en soit renvoie aussi le cout
-            print(path)
-            # ic(path)
-            total_time = ic(time.time()-start_time)
-        
+
+            path = avoidance.find_avoidance_path(graph, 0, 1).nodes # mais en soit renvoie aussi le coût
+
+            goals=[]
             for p in path[1:]: # we don't add the start point
-                goals_positions.append([float(dico_all_points[p][0]),float(dico_all_points[p][1]), theta])
-            
-            robot.goto_next_goal()
+                goals.append([float(dico_all_points[p][0]),float(dico_all_points[p][1]), theta])
+            goals_positions = goals
+            ic(goals_positions)
+            print()
+            print()
+            print()
 
 
         # si clic droit, on supprime tous les goals
@@ -484,6 +482,7 @@ while True:
     button.listen(events)
     pw.update(events)
 
+    ic(goals_positions, robot.pos)
     robot.check_goal_reached()
     robot.update_robot_position()
 
