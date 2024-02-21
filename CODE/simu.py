@@ -1,17 +1,13 @@
 # conda activate myenv (etienne)
 
-from kinematic_models import Robot_Kinematic_Model, Obstacle_static_model, Table_static_model
-import avoidance
-
 from icecream import ic
-import pygame, sys
+import pygame
 from math import atan2, pi, cos, sin
 import numpy as np
 import pygame_widgets as pw
 from pygame_widgets.button import Button
 from pygame_widgets.toggle import Toggle
 from skgeom import Point2, Polygon
-from dijkstar import Graph
 
 pygame.init()
 
@@ -259,10 +255,6 @@ def on_click():
     robot.linear_speed = [0, 0]
 
 
-robot = Robot_Kinematic_Model(TABLE_WIDTH=TABLE_WIDTH, TABLE_HEIGHT=TABLE_HEIGHT,FPS=FPS)
-offset = 10
-obstacle = Obstacle_static_model(center_x=100, center_y= 100, width= 10, height= 10,offset=offset)
-table = Table_static_model(TABLE_WIDTH, TABLE_HEIGHT, offset=offset)
 
 clock = pygame.time.Clock()
 button = Button(
@@ -288,11 +280,11 @@ while True:
     for event in events:
         if event.type == pygame.QUIT:
             pygame.quit()
-            sys.exit()
+            quit()
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 pygame.quit()
-                sys.exit()
+                quit()
 
         # si un clic souris, on va à la position du clic
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1: # left click down
@@ -316,6 +308,7 @@ while True:
             ic("goto", pos_waiting, theta*180/pi)
             waiting_for_release = False
 
+            """ENVOI MESSAGE ROS"""
             robot.recompute_path(obstacle,table,[pos_waiting[0],pos_waiting[1],theta])
 
         # si clic droit on bouge le robot adverse
@@ -326,18 +319,18 @@ while True:
                 x, y = mouse_pos
                 x, y = x-45, y-30
                 x, y = x/(WIDTH-90)*TABLE_WIDTH, y/(HEIGHT-60)*TABLE_HEIGHT
-                obstacle = Obstacle_static_model(x,y,10,10,offset)
+
+                """ENVOI MESSAGE ROS"""
+                obstacle = Obstacle_static_model(x, y, 10, 10, offset)
 
     button.listen(events)
     pw.update(events)
+
     # delete the last point so that the array does not get to heavy
-    if len(robot.robot_positions)>500:
-        robot.robot_positions.pop(0)
+    # if len(robot.robot_positions)>500:
+    #     robot.robot_positions.pop(0)
 
-
-    robot.recompute_path(obstacle, table)
-    robot.check_goal_reached()
-    robot.update_robot_position()
+    """ENVOI MSG ROS POSE GOAL, POLY ROBOT ADVERSE"""
 
     draw()    
     clock.tick(FPS)

@@ -1,5 +1,5 @@
 from math import *
-import skgeom as sg 
+import skgeom as sg
 
 def expand(poly: sg.Polygon, offset: float) -> sg.Polygon:
     """Expand a polygon by a given offset and return the expanded polygon"""
