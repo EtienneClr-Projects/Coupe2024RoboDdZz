@@ -19,6 +19,10 @@ def create_graph(start: sg.Point2, goal: sg.Point2, expanded_obstacle_poly: sg.P
     """
 
     ic("CREATING GRAPH\n\n")
+    # check if goal lies inside the obstacle
+    if point_inside_poly(goal, expanded_obstacle_poly):
+        return Graph(), {}
+    
     graph = Graph()
 
     # create a dictionnary associating each point with an index

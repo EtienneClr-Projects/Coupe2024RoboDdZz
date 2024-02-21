@@ -34,3 +34,6 @@ def point_to_tuple(p: sg.Point2) -> tuple:
 def tuple_to_point(t: tuple) -> sg.Point2:
     """Transform a tuple of coordinates to a Point2"""
     return sg.Point2(t[0],t[1])
+
+def point_inside_poly(p: sg.Point2, poly:sg.Polygon):
+    return poly.oriented_side(p) == sg.Sign.POSITIVE
