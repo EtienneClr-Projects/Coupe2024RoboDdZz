@@ -506,14 +506,12 @@ while True:
 
     # recompute path
     if len(goals_positions) > 0:
-        theta = goals_positions[-1][2]
+        theta = goals_positions[-1][2] # use the theta of the goal for each point
 
         start = Point2(robot.pos[0],robot.pos[1])
         goal = Point2(goals_positions[-1][0],goals_positions[-1][1])
         graph, dico_all_points = avoidance.create_graph(start, goal, expanded_obstacle_poly)
-
         path = avoidance.find_avoidance_path(graph, 0, 1).nodes # mais en soit renvoie aussi le coût
-
         goals = []
         for p in path[1:]: # we don't add the start point
             goals.append([float(dico_all_points[p][0]),float(dico_all_points[p][1]), theta])
@@ -521,7 +519,6 @@ while True:
 
 
 
-    ic(goals_positions, robot.pos)
     robot.check_goal_reached()
     robot.update_robot_position()
 
@@ -535,6 +532,13 @@ while True:
                              real_to_screen(float(pointA[0]),float(pointA[1])), 
                              real_to_screen(float(pointB[0]),float(pointB[1])),
                              3)
+            
+            # font = pygame.font.SysFont('Arial', 20)
+            # text = font.render(str(A), True, RED)
+            # textRect = text.get_rect()
+            # textRect.center = real_to_screen(float(pointA[0]),float(pointA[1]))
+            # screen.blit(text, textRect)
+            
 
     # draw path
     if path is not None:
@@ -544,11 +548,10 @@ while True:
                 real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), 
                 real_to_screen(dico_all_points[nodes[i+1]][0], dico_all_points[nodes[i+1]][1]), 
                 5)
-    
 
     # draw the obstacle
     draw_obstacle(screen, obstacle.polygon, RED)    
-    draw_obstacle(screen, expanded_obstacle_poly, YELLOW)  
+    # draw_obstacle(screen, expanded_obstacle_poly, YELLOW)  
     
     
     pygame.display.flip()

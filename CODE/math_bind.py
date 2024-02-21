@@ -21,7 +21,7 @@ def eq_segs(segA: sg.Segment2, segB: sg.Segment2) -> bool:
 
 def dist(A: sg.Point2,B: sg.Point2) -> float:
     """Compute the euclidian distance between two points"""
-    return sqrt(pow(A[0]+B[0],2)+pow(A[1]+B[1],2))
+    return sqrt(pow(A[0]-B[0],2)+pow(A[1]-B[1],2))
 
 def point_to_tuple(p: sg.Point2) -> tuple:
     """Transform a Point2 to a tuple of coordinates"""
