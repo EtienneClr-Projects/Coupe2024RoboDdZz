@@ -9,6 +9,7 @@ from math import atan2, pi, cos, sin
 import numpy as np
 import pygame_widgets as pw
 from pygame_widgets.button import Button
+from pygame_widgets.toggle import Toggle
 from skgeom import Point2, Polygon
 from dijkstar import Graph
 
@@ -45,7 +46,6 @@ def real_to_screen(x, y):
     screen_x = int(x * x_factor*0.9)+45
     screen_y = int(y * y_factor*0.9)+30
     return screen_x, screen_y
-
 
 def draw_roues(screen, screen_x, screen_y, robot_theta):
     # Dessiner les roues rectangulaires par 4 lignes
@@ -128,7 +128,6 @@ def draw_roues(screen, screen_x, screen_y, robot_theta):
                            v_y[1]*10+v_x[1]*10+centre_roue[1])
         screen.blit(text, textRect)
 
-
 def draw_obstacle(screen, obstacle, color):
     vertices = list(obstacle.vertices)
     vertices.append(vertices[0])
@@ -138,35 +137,36 @@ def draw_obstacle(screen, obstacle, color):
         pygame.draw.line(screen, color, A, B)
 
 def draw_graph_and_path(screen):
-    # draw the graph
-    for A,B in graph.items():
-        pointA = dico_all_points[A]
-        for b in B.keys():
-            pointB = dico_all_points[b]
-            pygame.draw.line(screen, BLACK, 
-                             real_to_screen(float(pointA[0]),float(pointA[1])), 
-                             real_to_screen(float(pointB[0]),float(pointB[1])),
-                             3)
+    if toggle_graph.getValue()==True:
+        # draw the graph
+        for A,B in graph.items():
+            pointA = dico_all_points[A]
+            for b in B.keys():
+                pointB = dico_all_points[b]
+                pygame.draw.line(screen, BLACK, 
+                                real_to_screen(float(pointA[0]),float(pointA[1])), 
+                                real_to_screen(float(pointB[0]),float(pointB[1])),
+                                3)
+                
+                # font = pygame.font.SysFont('Arial', 20)
+                # text = font.render(str(A), True, RED)
+                # textRect = text.get_rect()
+                # textRect.center = real_to_screen(float(pointA[0]),float(pointA[1]))
+                # screen.blit(text, textRect)
             
-            # font = pygame.font.SysFont('Arial', 20)
-            # text = font.render(str(A), True, RED)
-            # textRect = text.get_rect()
-            # textRect.center = real_to_screen(float(pointA[0]),float(pointA[1]))
-            # screen.blit(text, textRect)
-            
-
-    # draw path
-    if path is not None:
-        nodes = path
-        for i in range(len(nodes)-1):
-            pygame.draw.line(screen, GREEN, 
-                real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), 
-                real_to_screen(dico_all_points[nodes[i+1]][0], dico_all_points[nodes[i+1]][1]), 
-                5)
+    if toggle_path.getValue()==True:
+        # draw path
+        if path is not None:
+            nodes = path
+            for i in range(len(nodes)-1):
+                pygame.draw.line(screen, GREEN, 
+                    real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), 
+                    real_to_screen(dico_all_points[nodes[i+1]][0], dico_all_points[nodes[i+1]][1]), 
+                    5)
 
     # draw the obstacle
     draw_obstacle(screen, obstacle.polygon, RED)    
-    # draw_obstacle(screen, obstacle.expanded_obstacle_poly, YELLOW)  
+    draw_obstacle(screen, obstacle.expanded_obstacle_poly, YELLOW)  
 
 def draw():
     # drawings
@@ -192,8 +192,6 @@ def draw():
     pygame.draw.rect(screen, BLACK, (screen_table_x+screen_table_width-zone_size,
                      screen_table_y+screen_table_height-zone_size, zone_size, zone_size), 3)  # bas droite
 
-    # draw robot obstacle
-    # draw_obstacle(screen, obstacle)
 
     # Dessiner les positions du robot
     for pos in robot.robot_positions:
@@ -258,6 +256,8 @@ def draw():
     screen.blit(text, textRect)
 
     button.draw()
+    toggle_graph.draw()
+    toggle_path.draw()
 
     if waiting_for_release:
         # draw a line from pos_waiting to the mouse
@@ -291,6 +291,9 @@ button = Button(
     radius=20,
     onClick=lambda: on_click()
 )
+
+toggle_graph = Toggle(screen, 15, HEIGHT-60, 15, 15)
+toggle_path = Toggle(screen, 15, HEIGHT-85, 15, 15, startOn=True)
 
 waiting_for_release = False
 pos_waiting = []
