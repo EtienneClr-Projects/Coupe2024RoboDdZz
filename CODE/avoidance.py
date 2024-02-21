@@ -7,7 +7,7 @@ from skgeom import *
 from icecream import ic
 
 
-def create_graph(start: sg.Point2, goal: sg.Point2, expanded_obstacle_poly: sg.Polygon):
+def create_graph(start: sg.Point2, goal: sg.Point2, expanded_obstacle_poly: sg.Polygon, expanded_table_poly: sg.Polygon):
     ic.disable()
     """Create the graph of navigation from is point to the goal
 
@@ -15,6 +15,7 @@ def create_graph(start: sg.Point2, goal: sg.Point2, expanded_obstacle_poly: sg.P
         start (sg.Point2): The start point of the robot (robot pos)
         goal (sg.Point2): The goal point of the robot
         expanded_obstacle_poly (sg.Polygon): The polygon of the obstacle (expanded)
+        table (sg.Polygon): The polygon of the obstacle (negative expanded)
     """
 
     ic("CREATING GRAPH\n\n")
@@ -42,18 +43,24 @@ def create_graph(start: sg.Point2, goal: sg.Point2, expanded_obstacle_poly: sg.P
 # ADDING EDGES TO THE GRAPH
     # generate the edges of the polygon that should not be crossed
     # Todo TROUVER UNE AUTRE METHODE
-    poly_edges = []
+    obstacle_edges = []
     for i in range(len(dico_all_points)-2):
         if i==len(dico_all_points)-2-1:
-            poly_edges.append((i+2, 2))
+            obstacle_edges.append((i+2, 2))
         else:
-            poly_edges.append((i+2, i+2+1))
+            obstacle_edges.append((i+2, i+2+1))
 
     # Add the edges of the polygon to the graph as they are admissible by nature
-    for seg in poly_edges:
+    for seg in obstacle_edges:
         d = dist(dico_all_points[seg[0]],dico_all_points[seg[1]])
         graph.add_edge(seg[0],seg[1],d)
         graph.add_edge(seg[1],seg[0],d)
+
+    edges_to_not_cross = []
+    for edge in expanded_obstacle_poly.edges:
+        edges_to_not_cross.append(edge)
+    for edge in expanded_table_poly.edges:
+        edges_to_not_cross.append(edge)
 
     # check for each segment/combination of two points if they cross the obstacle
     # if not we add them as edges to the graph
@@ -63,9 +70,9 @@ def create_graph(start: sg.Point2, goal: sg.Point2, expanded_obstacle_poly: sg.P
         pointB = dico_all_points[b]
         segment = Segment2(tuple_to_point(pointA),tuple_to_point(pointB))
 
-        # Check if there is an intersection with one obstacle
+        # Check if there is an intersection with one obstacle or the table
         no_inter = True
-        for edge in expanded_obstacle_poly.edges:
+        for edge in edges_to_not_cross:
             inter = intersection(edge, segment)
             if inter == None:
                 continue
@@ -93,7 +100,7 @@ def create_graph(start: sg.Point2, goal: sg.Point2, expanded_obstacle_poly: sg.P
     ic("CREATED GRAPH\n\n")
     ic.enable()
 
-    return graph,dico_all_points
+    return graph, dico_all_points
 
 
 
@@ -108,4 +115,7 @@ def find_avoidance_path(graph, start, end):
     Returns:
         list[int]: The list of the indices of the points of the path
     """
-    return find_path(graph, start, end)
+    try:
+        return find_path(graph, start, end)
+    except:
+        return None

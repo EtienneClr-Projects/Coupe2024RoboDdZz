@@ -1,6 +1,6 @@
 # conda activate myenv (etienne)
 
-from kinematic_models import Robot_Kinematic_Model, Obstacle_static_model
+from kinematic_models import Robot_Kinematic_Model, Obstacle_static_model, Table_static_model
 import avoidance
 
 from icecream import ic
@@ -59,29 +59,29 @@ def draw_roues(screen, screen_x, screen_y, robot_theta):
 
         # Coordonnées du centre de la roue
         centre_roue = (
-            screen_x + robot.rayon_robot * cos(angle_roue),
-            screen_y + robot.rayon_robot * sin(angle_roue)
+            screen_x + robot.robot_radius * cos(angle_roue),
+            screen_y + robot.robot_radius * sin(angle_roue)
         )
 
         # Coordonnées des coins de la roue
         coin1 = np.array([
-            centre_roue[0] + robot.epaisseur_roue/2,
-            centre_roue[1] + robot.rayon_roue
+            centre_roue[0] + robot.wheel_width/2,
+            centre_roue[1] + robot.wheel_radius
         ])
 
         coin2 = np.array([
-            centre_roue[0] + robot.epaisseur_roue/2,
-            centre_roue[1] - robot.rayon_roue
+            centre_roue[0] + robot.wheel_width/2,
+            centre_roue[1] - robot.wheel_radius
         ])
 
         coin3 = np.array([
-            centre_roue[0] - robot.epaisseur_roue/2,
-            centre_roue[1] - robot.rayon_roue
+            centre_roue[0] - robot.wheel_width/2,
+            centre_roue[1] - robot.wheel_radius
         ])
 
         coin4 = np.array([
-            centre_roue[0] - robot.epaisseur_roue/2,
-            centre_roue[1] + robot.rayon_roue
+            centre_roue[0] - robot.wheel_width/2,
+            centre_roue[1] + robot.wheel_radius
         ])
         # now we rotate each point around the center of the wheel
         coin1 = np.array([
@@ -128,18 +128,18 @@ def draw_roues(screen, screen_x, screen_y, robot_theta):
                            v_y[1]*10+v_x[1]*10+centre_roue[1])
         screen.blit(text, textRect)
 
-def draw_obstacle(screen, obstacle, color):
+def draw_poly(screen, obstacle, color, width=1):
     vertices = list(obstacle.vertices)
     vertices.append(vertices[0])
     for i in range(len(vertices)-1):
         A = real_to_screen(float(vertices[i].x()),float(vertices[i].y()))
         B = real_to_screen(float(vertices[i+1].x()),float(vertices[i+1].y()))
-        pygame.draw.line(screen, color, A, B)
+        pygame.draw.line(screen, color, A, B, width)
 
-def draw_graph_and_path(screen):
+def draw_graph_and_path(screen, dico_all_points):
     if toggle_graph.getValue()==True:
         # draw the graph
-        for A,B in graph.items():
+        for A,B in robot.graph.items():
             pointA = dico_all_points[A]
             for b in B.keys():
                 pointB = dico_all_points[b]
@@ -156,8 +156,8 @@ def draw_graph_and_path(screen):
             
     if toggle_path.getValue()==True:
         # draw path
-        if path is not None:
-            nodes = path
+        if robot.path_nodes is not None:
+            nodes = robot.path_nodes
             for i in range(len(nodes)-1):
                 pygame.draw.line(screen, GREEN, 
                     real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), 
@@ -165,33 +165,15 @@ def draw_graph_and_path(screen):
                     5)
 
     # draw the obstacle
-    draw_obstacle(screen, obstacle.polygon, RED)    
-    draw_obstacle(screen, obstacle.expanded_obstacle_poly, YELLOW)  
+    draw_poly(screen, obstacle.polygon, RED)    
+    draw_poly(screen, obstacle.expanded_obstacle_poly, YELLOW)  
 
 def draw():
     # drawings
     screen.fill(WHITE)
 
-    # Dessiner la table
-    screen_table_x, screen_table_y = real_to_screen(0, 0)
-    screen_table_width, screen_table_height = real_to_screen(
-        TABLE_WIDTH, TABLE_HEIGHT)
-    bottom_right_corner = (screen_table_width-45, screen_table_height-30)
-
-    pygame.draw.rect(screen, BLACK, (screen_table_x, screen_table_y,
-                     bottom_right_corner[0], bottom_right_corner[1]), 3)
-
-    # zones
-    zone_size = real_to_screen(45, 45)[0]
-    pygame.draw.rect(screen, BLACK, (screen_table_x,
-                     screen_table_y, zone_size, zone_size), 3)  # haut gauche
-    pygame.draw.rect(screen, BLACK, (screen_table_x+screen_table_width -
-                     zone_size, screen_table_y, zone_size, zone_size), 3)  # haut droite
-    pygame.draw.rect(screen, BLACK, (screen_table_x, screen_table_y +
-                     screen_table_height-zone_size, zone_size, zone_size), 3)  # bas gauche
-    pygame.draw.rect(screen, BLACK, (screen_table_x+screen_table_width-zone_size,
-                     screen_table_y+screen_table_height-zone_size, zone_size, zone_size), 3)  # bas droite
-
+    draw_poly(screen, table.polygon, BLACK, 3)
+    draw_poly(screen, table.expanded_poly, YELLOW)
 
     # Dessiner les positions du robot
     for pos in robot.robot_positions:
@@ -221,7 +203,7 @@ def draw():
     # Dessiner le robot à sa nouvelle position
     screen_x, screen_y = real_to_screen(robot.pos[0], robot.pos[1])
     pygame.draw.circle(screen, BLACK, (screen_x, screen_y),
-                       robot.rayon_robot, 1)
+                       robot.robot_radius, 1)
     pygame.draw.circle(screen, GREEN, (screen_x, screen_y), 1)
 
     # dessiner la direction du robot
@@ -230,22 +212,22 @@ def draw():
 
     draw_roues(screen, screen_x, screen_y, robot.pos[2])
 
-    draw_graph_and_path(screen)
+    draw_graph_and_path(screen, robot.dico_all_points)
 
     # print the speeds in the top left corner
     font = pygame.font.SysFont('Arial', 20)
     text = font.render(
-        "speed_x: " + str(round(robot.vitesse_lineaire[0], 2)) + " cm/s", True, BLACK)
+        "speed_x: " + str(round(robot.linear_speed[0], 2)) + " cm/s", True, BLACK)
     textRect = text.get_rect()
     textRect.topleft = (50, 30)
     screen.blit(text, textRect)
     text = font.render(
-        "speed_y: " + str(round(robot.vitesse_lineaire[1], 2)) + " cm/s", True, BLACK)
+        "speed_y: " + str(round(robot.linear_speed[1], 2)) + " cm/s", True, BLACK)
     textRect = text.get_rect()
     textRect.topleft = (50, 50)
     screen.blit(text, textRect)
     text = font.render(
-        "speed_theta: " + str(round(robot.vitesse_angulaire, 2)) + " rad/s", True, BLACK)
+        "speed_theta: " + str(round(robot.angular_speed, 2)) + " rad/s", True, BLACK)
     textRect = text.get_rect()
     textRect.topleft = (50, 70)
     screen.blit(text, textRect)
@@ -274,13 +256,13 @@ def draw():
 def on_click():
     global robot
     print("button clicked")
-    robot.vitesse_lineaire = [0, 0]
+    robot.linear_speed = [0, 0]
 
 
 robot = Robot_Kinematic_Model(TABLE_WIDTH=TABLE_WIDTH, TABLE_HEIGHT=TABLE_HEIGHT,FPS=FPS)
 offset = 10
 obstacle = Obstacle_static_model(center_x=100, center_y= 100, width= 10, height= 10,offset=offset)
-
+table = Table_static_model(TABLE_WIDTH, TABLE_HEIGHT, offset=offset)
 
 clock = pygame.time.Clock()
 button = Button(
@@ -298,9 +280,6 @@ toggle_path = Toggle(screen, 15, HEIGHT-85, 15, 15, startOn=True)
 waiting_for_release = False
 pos_waiting = []
 
-
-graph = Graph()
-path = None
 
 # Boucle principale
 while True:
@@ -337,7 +316,7 @@ while True:
             ic("goto", pos_waiting, theta*180/pi)
             waiting_for_release = False
 
-            robot.goals_positions.append([pos_waiting[0],pos_waiting[1],theta])
+            robot.recompute_path(obstacle,table,[pos_waiting[0],pos_waiting[1],theta])
 
         # si clic droit on bouge le robot adverse
         if pygame.mouse.get_pressed()[2]:
@@ -356,20 +335,7 @@ while True:
         robot.robot_positions.pop(0)
 
 
-    # recompute path
-    if len(robot.goals_positions) > 0:
-        theta = robot.goals_positions[-1][2] # use the theta of the goal for each point
-
-        start = Point2(robot.pos[0],robot.pos[1])
-        goal = Point2(robot.goals_positions[-1][0],robot.goals_positions[-1][1])
-        graph, dico_all_points = avoidance.create_graph(start, goal, obstacle.expanded_obstacle_poly)
-        path = avoidance.find_avoidance_path(graph, 0, 1).nodes # mais en soit renvoie aussi le coût
-        goals = []
-        for p in path[1:]: # we don't add the start point
-            goals.append([float(dico_all_points[p][0]),float(dico_all_points[p][1]), theta])
-        robot.goals_positions = goals
-
-
+    robot.recompute_path(obstacle, table)
     robot.check_goal_reached()
     robot.update_robot_position()
 

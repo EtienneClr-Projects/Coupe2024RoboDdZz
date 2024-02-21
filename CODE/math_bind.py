@@ -3,7 +3,11 @@ import skgeom as sg
 
 def expand(poly: sg.Polygon, offset: float) -> sg.Polygon:
     """Expand a polygon by a given offset and return the expanded polygon"""
-    skel = sg.skeleton.create_exterior_straight_skeleton(poly,offset)
+    if offset>0:
+        skel = sg.skeleton.create_exterior_straight_skeleton(poly,offset)
+    else:
+        offset=-offset
+        skel = sg.skeleton.create_interior_straight_skeleton(poly)
     expanded_poly = skel.offset_polygons(offset)[0]
     return expanded_poly
 
@@ -21,7 +25,7 @@ def eq_segs(segA: sg.Segment2, segB: sg.Segment2) -> bool:
 
 def dist(A: sg.Point2,B: sg.Point2) -> float:
     """Compute the euclidian distance between two points"""
-    return sqrt(pow(A[0]-B[0],2)+pow(A[1]-B[1],2))
+    return sqrt(pow(B[0]-A[0],2)+pow(B[1]-A[1],2))
 
 def point_to_tuple(p: sg.Point2) -> tuple:
     """Transform a Point2 to a tuple of coordinates"""
