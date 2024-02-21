@@ -1,24 +1,15 @@
-# TODO
-# - pb quand on part du coin en haut à gauche
-# - implementer une limitation en acceleration
-# - implementer des rampes d'accelération
+# conda activate myenv (etienne)
 
-# - definir vitesse max par roue et lineaire (x et y combines)
-
-# conda activate myenv
+from kinematic_models import Robot_Kinematic_Model, Obstacle_static_model
+import avoidance
 
 from icecream import ic
-from typing import List
-import pygame
-import sys
-import time
-from math import *
+import pygame, sys
+from math import atan2, pi, cos, sin
 import numpy as np
-from pid import PID
 import pygame_widgets as pw
 from pygame_widgets.button import Button
-import avoidance
-from skgeom import *
+from skgeom import Point2, Polygon
 from dijkstar import Graph
 
 pygame.init()
@@ -39,180 +30,6 @@ GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 YELLOW = (255, 255, 0)
 PINK = (255, 0, 255)
-
-
-
-goals_positions = [[TABLE_WIDTH/2, TABLE_HEIGHT/2, 0],
-                   ]  # [x, y, theta]
-
-# ROBOT
-
-
-class Robot():
-    def __init__(self) -> None:
-        self.pos = np.array([TABLE_WIDTH/2,  # x, m
-                             TABLE_HEIGHT/2,  # y, m
-                             0])  # theta, rad between -pi and pi
-        self.rayon_roue = 5.8
-        self.epaisseur_roue = 5
-        self.rayon_robot = 15
-        self.robot_positions = [self.pos]
-
-        self.vitesse_lineaire = [0, 0]  # m/s
-        self.vitesse_angulaire = 0  # rad/s
-        self.has_finished_rotation = False
-
-        self.vitesse_roue0 = 0
-        self.vitesse_roue1 = 0
-        self.vitesse_roue2 = 0
-
-        self.MAX_ACCEL_PER_CYCLE = 1000/FPS # rotation/s/cycle
-
-        self.current_goal = self.pos
-        self.goal_reached = True
-
-        # self.max_wheel_speed = 1  # rad/s
-        self.max_ang_speed = 1.2  # pi/2  # rad/s
-
-        # juste un P, normal pour la position
-        self.pid_pos_x = PID(5, 0, 0, 1/FPS)
-        self.pid_pos_y = PID(5, 0, 0, 1/FPS)
-        self.pid_pos_theta = PID(50, 0, 0, 1/FPS)
-
-    def write_speeds(self, speeds: List) -> None:
-        self.vitesse_roue0 = speeds[0]
-        self.vitesse_roue1 = speeds[1]
-        self.vitesse_roue2 = speeds[2]
-
-    def goto(self, x, y, theta):
-        # si c'est plus court de tourner dans l'autre sens, on tourne dans l'autre sens
-        error_theta = theta - self.pos[2]
-        if error_theta > pi:
-            error_theta -= 2*pi
-        elif error_theta < -pi:
-            error_theta += 2*pi
-        self.vitesse_angulaire = self.pid_pos_theta.update(error_theta)
-
-        # limit the speeds (speeds can be negative)
-        self.vitesse_angulaire = max(-self.max_ang_speed,
-                                        min(self.vitesse_angulaire, self.max_ang_speed))
-        # print("error_theta", error_theta,
-        #       "vitesse_angulaire", self.vitesse_angulaire)
-        if self.check_rotation_reached():
-            self.has_finished_rotation = True
-            self.vitesse_angulaire = 0
-
-        # # PID
-        self.vitesse_lineaire = [
-            self.pid_pos_x.update(x - self.pos[0]),
-            self.pid_pos_y.update(y - self.pos[1])
-        ]
-
-    def goto_next_goal(self):
-        self.goal_reached = False
-        self.has_finished_rotation = False
-        if len(goals_positions)>0:
-            goals_positions.pop(0)
-        if len(goals_positions)>0:
-            self.current_goal = goals_positions[0]
-        
-    def check_angle(self, angle1, angle2, error_max):
-        error = abs(angle1 - angle2)
-        if (abs(2*pi-error) < 0.01):
-            error = 0
-        return error < error_max
-
-    def check_goal_reached(self):
-        error_max_lin = 1
-        error_max_ang = 0.01
-
-        if (len(goals_positions))==0:
-            return True
-
-        self.current_goal = goals_positions[0]
-
-        if abs(self.pos[0] - self.current_goal[0]) < error_max_lin and abs(self.pos[1] - self.current_goal[1]) < error_max_lin:
-            if self.check_angle(self.pos[2], self.current_goal[2], error_max_ang):
-                self.goto_next_goal()
-                ic("GOAL REACHED")
-
-                self.goal_reached = True
-
-    def check_rotation_reached(self):
-        error_max_ang = 0.01
-        return self.check_angle(self.pos[2], self.current_goal[2], error_max_ang)
-
-    def update_robot_position(self):
-        global FPS
-        self.goto(self.current_goal[0],
-                  self.current_goal[1],
-                  self.current_goal[2])
-        self.vitesses_to_roues()
-
-        # Convertir les vitesses angulaires des roues en vitesse linéaire et angulaire du robot
-        self.vitesse_lineaire = [-(self.vitesse_roue0 + self.vitesse_roue1 - 2*self.vitesse_roue2),
-                                 1/3*(-self.vitesse_roue0*sqrt(3) + self.vitesse_roue1*sqrt(3))]
-
-        self.vitesse_angulaire = (1 / (self.rayon_robot)) * \
-            (-self.vitesse_roue0 - self.vitesse_roue1 + self.vitesse_roue2)
-
-        # Mettre à jour les coordonnées du robot en fonction des vitesses
-        delta_t = 1 / FPS  # Temps entre deux mises à jour
-        self.pos[0] += self.vitesse_lineaire[0] * delta_t
-        self.pos[1] += self.vitesse_lineaire[1] * delta_t
-        self.pos[2] += self.vitesse_angulaire * delta_t
-
-        self.robot_positions.append(self.pos.copy())
-
-    def vitesses_to_roues(self):
-        # On calcule la vitesse de chaque roue en mètres par seconde
-        cmd_vitesse_roue0 = 0.5 * \
-            self.vitesse_lineaire[0] - sqrt(3) / 2 * self.vitesse_lineaire[1] - \
-            self.rayon_robot * self.vitesse_angulaire
-        cmd_vitesse_roue1 = 0.5 * \
-            self.vitesse_lineaire[0] + sqrt(3) / 2 * self.vitesse_lineaire[1] - \
-            self.rayon_robot * self.vitesse_angulaire
-        cmd_vitesse_roue2 = self.vitesse_lineaire[0] - \
-            self.rayon_robot * self.vitesse_angulaire
-
-
-        # limit the speeds
-        # calc les accels
-        accel_roue_0 = cmd_vitesse_roue0 - self.vitesse_roue0
-        accel_roue_1 = cmd_vitesse_roue1 - self.vitesse_roue1
-        accel_roue_2 = cmd_vitesse_roue2 - self.vitesse_roue2
-        
-        abs_accel_roue_0 = abs(accel_roue_0)
-        abs_accel_roue_1 = abs(accel_roue_1)
-        abs_accel_roue_2 = abs(accel_roue_2)
-
-        
-        abs_accel_roues = [abs_accel_roue_0, abs_accel_roue_1, abs_accel_roue_2]
-
-        if abs_accel_roue_0 < self.MAX_ACCEL_PER_CYCLE and abs_accel_roue_1 < self.MAX_ACCEL_PER_CYCLE and abs_accel_roue_2 < self.MAX_ACCEL_PER_CYCLE:
-            # acceleration requested is ok, no need to accelerate gradually.
-            self.write_speeds([cmd_vitesse_roue0, cmd_vitesse_roue1, cmd_vitesse_roue2])
-        else:
-            speed_ratio = self.MAX_ACCEL_PER_CYCLE / max(abs_accel_roues)
-            self.write_speeds([self.vitesse_roue0 + speed_ratio * accel_roue_0, 
-                               self.vitesse_roue1 + speed_ratio * accel_roue_1, 
-                               self.vitesse_roue2 + speed_ratio * accel_roue_2])
-
-
-
-
-
-class Obstacle():
-    # carré
-    def __init__(self, center_x, center_y, width, height) -> None:
-        self.center_x = center_x
-        self.center_y = center_y
-        self.width = width
-        self.height = height
-        self.polygon = Polygon([Point2(center_x+width/2,center_y+height/2),
-                               Point2(center_x+width/2,center_y-height/2),
-                               Point2(center_x-width/2,center_y-height/2),
-                               Point2(center_x-width/2,center_y+height/2)])
 
 
 # Fonction pour convertir les coordonnées réelles en coordonnées écran
@@ -320,6 +137,36 @@ def draw_obstacle(screen, obstacle, color):
         B = real_to_screen(float(vertices[i+1].x()),float(vertices[i+1].y()))
         pygame.draw.line(screen, color, A, B)
 
+def draw_graph_and_path(screen):
+    # draw the graph
+    for A,B in graph.items():
+        pointA = dico_all_points[A]
+        for b in B.keys():
+            pointB = dico_all_points[b]
+            pygame.draw.line(screen, BLACK, 
+                             real_to_screen(float(pointA[0]),float(pointA[1])), 
+                             real_to_screen(float(pointB[0]),float(pointB[1])),
+                             3)
+            
+            # font = pygame.font.SysFont('Arial', 20)
+            # text = font.render(str(A), True, RED)
+            # textRect = text.get_rect()
+            # textRect.center = real_to_screen(float(pointA[0]),float(pointA[1]))
+            # screen.blit(text, textRect)
+            
+
+    # draw path
+    if path is not None:
+        nodes = path
+        for i in range(len(nodes)-1):
+            pygame.draw.line(screen, GREEN, 
+                real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), 
+                real_to_screen(dico_all_points[nodes[i+1]][0], dico_all_points[nodes[i+1]][1]), 
+                5)
+
+    # draw the obstacle
+    draw_obstacle(screen, obstacle.polygon, RED)    
+    # draw_obstacle(screen, obstacle.expanded_obstacle_poly, YELLOW)  
 
 def draw():
     # drawings
@@ -354,19 +201,19 @@ def draw():
         pygame.draw.circle(screen, BLUE, (screen_x, screen_y), 1)
 
     # draw all next goals by a cross and an arrow
-    for i in range(len(goals_positions)):
+    for i in range(len(robot.goals_positions)):
         screen_x, screen_y = real_to_screen(
-            goals_positions[i][0], goals_positions[i][1])
+            robot.goals_positions[i][0], robot.goals_positions[i][1])
         pygame.draw.line(screen, GREEN, (screen_x-5, screen_y-5),
                          (screen_x+5, screen_y+5), 2)
         pygame.draw.line(screen, GREEN, (screen_x+5, screen_y-5),
                          (screen_x-5, screen_y+5), 2)
         # arrow indicating the angle
         pygame.draw.line(screen, GREEN, (screen_x, screen_y),
-                         (screen_x+20*cos(goals_positions[i][2]-pi/2),
-                             screen_y+20*sin(goals_positions[i][2]-pi/2)), 2)
+                         (screen_x+20*cos(robot.goals_positions[i][2]-pi/2),
+                             screen_y+20*sin(robot.goals_positions[i][2]-pi/2)), 2)
         # text
-        angle = goals_positions[i][2]*180/pi
+        angle = robot.goals_positions[i][2]*180/pi
         font = pygame.font.SysFont('Arial', 10)
         text = font.render(str(angle)+"°", True, BLACK)
         textRect = text.get_rect()
@@ -384,6 +231,8 @@ def draw():
                      (screen_x+20*cos(-pi/2+robot.pos[2]), screen_y+20*sin(-pi/2+robot.pos[2])), 2)
 
     draw_roues(screen, screen_x, screen_y, robot.pos[2])
+
+    draw_graph_and_path(screen)
 
     # print the speeds in the top left corner
     font = pygame.font.SysFont('Arial', 20)
@@ -420,13 +269,7 @@ def draw():
             pos_waiting[0], pos_waiting[1]), real_to_screen(x, y), 2)
 
     # Mettre à jour l'affichage
-    # pygame.display.flip() # TODO remettre
-
-
-robot = Robot()
-obstacle = Obstacle(100, 100, 10, 10)
-offset = 15
-expanded_obstacle_poly = avoidance.expand(obstacle.polygon, offset)
+    pygame.display.flip() # TODO remettre
 
 def on_click():
     global robot
@@ -434,7 +277,11 @@ def on_click():
     robot.vitesse_lineaire = [0, 0]
 
 
-# Boucle principale
+robot = Robot_Kinematic_Model(TABLE_WIDTH=TABLE_WIDTH, TABLE_HEIGHT=TABLE_HEIGHT,FPS=FPS)
+offset = 10
+obstacle = Obstacle_static_model(center_x=100, center_y= 100, width= 10, height= 10,offset=offset)
+
+
 clock = pygame.time.Clock()
 button = Button(
     screen, 5, HEIGHT-30-5, 50, 30, text='Pause',
@@ -449,11 +296,12 @@ waiting_for_release = False
 pos_waiting = []
 
 
-
 graph = Graph()
 path = None
 
+# Boucle principale
 while True:
+    # EVENTS
     events = pygame.event.get()
     for event in events:
         if event.type == pygame.QUIT:
@@ -486,78 +334,41 @@ while True:
             ic("goto", pos_waiting, theta*180/pi)
             waiting_for_release = False
 
-            goals_positions.append([pos_waiting[0],pos_waiting[1],theta])
+            robot.goals_positions.append([pos_waiting[0],pos_waiting[1],theta])
 
-        # si clic droit, on supprime tous les goals
-        # finalement maintenant on bouge le robot adverse
-        if event.type == pygame.MOUSEMOTION and pygame.mouse.get_pressed()[2]:
-            # if event.button == 3: # right click
-            # goals_positions = [[TABLE_WIDTH/2, TABLE_HEIGHT/2, 0]]
-            mouse_pos = pygame.mouse.get_pos()
-            x, y = mouse_pos
-            x, y = x-45, y-30
-            x, y = x/(WIDTH-90)*TABLE_WIDTH, y/(HEIGHT-60)*TABLE_HEIGHT
-            obstacle = Obstacle(x,y,10,10)
-            expanded_obstacle_poly = avoidance.expand(obstacle.polygon, offset)
+        # si clic droit on bouge le robot adverse
+        if pygame.mouse.get_pressed()[2]:
+            if event.type == pygame.MOUSEMOTION or event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.MOUSEBUTTONUP:
+                # if event.button == 3: # right click
+                mouse_pos = pygame.mouse.get_pos()
+                x, y = mouse_pos
+                x, y = x-45, y-30
+                x, y = x/(WIDTH-90)*TABLE_WIDTH, y/(HEIGHT-60)*TABLE_HEIGHT
+                obstacle = Obstacle_static_model(x,y,10,10,offset)
 
     button.listen(events)
     pw.update(events)
+    # delete the last point so that the array does not get to heavy
+    if len(robot.robot_positions)>500:
+        robot.robot_positions.pop(0)
 
 
     # recompute path
-    if len(goals_positions) > 0:
-        theta = goals_positions[-1][2] # use the theta of the goal for each point
+    if len(robot.goals_positions) > 0:
+        theta = robot.goals_positions[-1][2] # use the theta of the goal for each point
 
         start = Point2(robot.pos[0],robot.pos[1])
-        goal = Point2(goals_positions[-1][0],goals_positions[-1][1])
-        graph, dico_all_points = avoidance.create_graph(start, goal, expanded_obstacle_poly)
+        goal = Point2(robot.goals_positions[-1][0],robot.goals_positions[-1][1])
+        graph, dico_all_points = avoidance.create_graph(start, goal, obstacle.expanded_obstacle_poly)
         path = avoidance.find_avoidance_path(graph, 0, 1).nodes # mais en soit renvoie aussi le coût
         goals = []
         for p in path[1:]: # we don't add the start point
             goals.append([float(dico_all_points[p][0]),float(dico_all_points[p][1]), theta])
-        goals_positions = goals
-
+        robot.goals_positions = goals
 
 
     robot.check_goal_reached()
     robot.update_robot_position()
 
-    draw()
-    # draw the graph
-    for A,B in graph.items():
-        pointA = dico_all_points[A]
-        for b in B.keys():
-            pointB = dico_all_points[b]
-            pygame.draw.line(screen, BLACK, 
-                             real_to_screen(float(pointA[0]),float(pointA[1])), 
-                             real_to_screen(float(pointB[0]),float(pointB[1])),
-                             3)
-            
-            # font = pygame.font.SysFont('Arial', 20)
-            # text = font.render(str(A), True, RED)
-            # textRect = text.get_rect()
-            # textRect.center = real_to_screen(float(pointA[0]),float(pointA[1]))
-            # screen.blit(text, textRect)
-            
-
-    # draw path
-    if path is not None:
-        nodes = path
-        for i in range(len(nodes)-1):
-            pygame.draw.line(screen, GREEN, 
-                real_to_screen(dico_all_points[nodes[i]][0],dico_all_points[nodes[i]][1]), 
-                real_to_screen(dico_all_points[nodes[i+1]][0], dico_all_points[nodes[i+1]][1]), 
-                5)
-
-    # draw the obstacle
-    draw_obstacle(screen, obstacle.polygon, RED)    
-    # draw_obstacle(screen, expanded_obstacle_poly, YELLOW)  
-    
-    
-    pygame.display.flip()
-    
+    draw()    
     clock.tick(FPS)
-
-    # delete the last point so that the array does not get to heavy
-    if len(robot.robot_positions)>500:
-        robot.robot_positions.pop(0)
